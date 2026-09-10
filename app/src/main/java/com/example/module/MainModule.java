@@ -121,6 +121,29 @@ public class MainModule extends XposedModule {
                                             log(4, TAG, "Replaced via composing-text fallback");
                                         }
                                         lastComposingText = null;
+                                        
+                                    } else {
+                                        // Case 3: Character-by-character typing (e.g., in Termux or search bars)
+                                        InputConnection ic = currentIC;
+                                        if (ic != null) {
+                                            // Peek at the last 4 characters before the cursor
+                                            CharSequence beforeCursor = ic.getTextBeforeCursor(4, 0);
+                                            if (beforeCursor != null) {
+                                                // Combine what's already in the field with the key just pressed
+                                                String combined = beforeCursor.toString().toLowerCase() + typedText.toLowerCase();
+                                                
+                                                if (combined.endsWith("fuck")) {
+                                                    // Calculate how many characters we need to delete from the screen.
+                                                    // If typedText is "k" (1 char), we need to delete "fuc" (3 chars).
+                                                    int charsToDelete = 4 - typedText.length();
+                                                    
+                                                    ic.deleteSurroundingText(charsToDelete, 0);
+                                                    args.set(0, "its a bad word");
+                                                    log(4, TAG, "Replaced via character-by-character fallback");
+                                                    lastComposingText = null;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             } catch (Throwable t) {
