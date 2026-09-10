@@ -1,7 +1,6 @@
-# libxposed module properties
-# Minimum API version (libxposed)
-minApiVersion=101
-# Target API version (libxposed)
-targetApiVersion=101
-# Whether it is a static scope
-staticScope=true
+id=com.MuhammadSaadoon.textreplacer
+name=Text Replacer
+version=1.0
+versionCode=1
+author=Muhammad Saadoon
+description=System-wide typed word replacer for Android 16.
