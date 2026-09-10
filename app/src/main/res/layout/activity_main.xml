@@ -1,1 +1,56 @@
-<?xml version="1.0" encoding="utf-8"?> <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp"> <!-- ========================================================= TITLE ========================================================= --> <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Text Replacer" android:textSize="24sp" android:textStyle="bold" android:paddingBottom="16dp" /> <!-- ========================================================= BAD WORD ========================================================= --> <EditText android:id="@+id/input_bad_word" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Word to replace" android:inputType="text" android:singleLine="true" /> <!-- ========================================================= REPLACEMENT ========================================================= --> <EditText android:id="@+id/input_replacement" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Replacement" android:inputType="text" android:singleLine="true" android:layout_marginTop="8dp" /> <!-- ========================================================= SAVE BUTTON ========================================================= --> <Button android:id="@+id/btn_save" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Save" android:layout_marginTop="12dp" /> <!-- ========================================================= DIVIDER ========================================================= --> <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#CCCCCC" android:layout_marginTop="12dp" android:layout_marginBottom="8dp" /> <!-- ========================================================= WORD LIST ========================================================= --> <androidx.recyclerview.widget.RecyclerView android:id="@+id/recycler_words" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:clipToPadding="false" android:paddingBottom="8dp" /> </LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingBottom="16dp"
+        android:text="Text Replacer"
+        android:textSize="24sp"
+        android:textStyle="bold" />
+
+    <EditText
+        android:id="@+id/input_bad_word"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Word to replace"
+        android:inputType="text"
+        android:singleLine="true" />
+
+    <EditText
+        android:id="@+id/input_replacement"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="Replacement"
+        android:inputType="text"
+        android:singleLine="true" />
+
+    <Button
+        android:id="@+id/btn_save"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Save" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="8dp"
+        android:background="#CCCCCC" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recycler_words"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp" />
+
+</LinearLayout>
