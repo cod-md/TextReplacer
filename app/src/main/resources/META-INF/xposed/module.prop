@@ -4,3 +4,7 @@ version=1.0
 versionCode=1
 author=Muhammad Saadoon
 description=System-wide typed word replacer for Android 16.
+
+minApiVersion=101
+targetApiVersion=102
+staticScope=true
