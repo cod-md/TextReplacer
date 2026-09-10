@@ -28,7 +28,7 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         // 1. Get the shared storage file named "mod_prefs"
-        prefs = getSharedPreferences("mod_prefs", Context.MODE_WORLD_READABLE);
+        prefs = getSharedPreferences("mod_prefs", Context.MODE_PRIVATE);
         
         // Load any words we already saved in the past
         loadExistingWords();
