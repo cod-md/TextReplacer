@@ -3,6 +3,17 @@
 
     <application
         android:label="Text Replacer">
+
+        <!-- This block tells Android to put the app on your home screen -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
     </application>
 
 </manifest>
