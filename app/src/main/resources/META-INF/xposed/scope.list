@@ -1,5 +1,1 @@
-# Scope list, one package name per line
-# For system modules, you can use 'system'
-system
-# For example:
-# com.android.systemui
+com.google.android.inputmethod.latin
