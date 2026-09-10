@@ -48,7 +48,7 @@ dependencies {
     implementation("io.github.libxposed:service:102.0.0")
 
     // Xposed API used by your module
-    compileOnly("io.github.libxposed:api:102.0.0")
+    compileOnly("io.github.libxposed:api:101.0.0")
 
     compileOnly("androidx.annotation:annotation:1.9.1")
 }
