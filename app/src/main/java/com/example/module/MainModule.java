@@ -3,89 +3,87 @@ package com.example.module;
 import android.view.inputmethod.InputConnectionWrapper;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
-import io.github.libxposed.api.annotations.XposedHooker;
+import io.github.libxposed.api.XposedModuleInterface;
 
 public class MainModule extends XposedModule {
 
-    public MainModule() {
-        super();
-    }
+    private static final String TARGET_PACKAGE =
+            "com.google.android.inputmethod.latin";
 
     @Override
     public void onPackageLoaded(
-            XposedInterface.PackageLoadedParam param
-    ) {
+            XposedModuleInterface.PackageLoadedParam param) {
+
         super.onPackageLoaded(param);
 
-        // Only hook Gboard.
-        if (!"com.google.android.inputmethod.latin".equals(param.getPackageName())) {
-            return;
-        }
-
-        // Avoid installing the hook more than once.
-        if (!param.isFirstPackage()) {
+        // Only run inside Gboard
+        if (!TARGET_PACKAGE.equals(param.getPackageName())) {
             return;
         }
 
         try {
-            Method commitText = InputConnectionWrapper.class.getDeclaredMethod(
-                    "commitText",
-                    CharSequence.class,
-                    int.class
-            );
+            Method commitTextMethod =
+                    InputConnectionWrapper.class.getDeclaredMethod(
+                            "commitText",
+                            CharSequence.class,
+                            int.class
+                    );
 
-            hook(commitText)
+            hook(commitTextMethod)
                     .setExceptionMode(
                             XposedInterface.ExceptionMode.PROTECTIVE
                     )
-                    .intercept(TextReplacementHooker.class);
+                    .intercept(chain -> {
 
-            log("Gboard commitText hook installed.");
+                        List<Object> args = chain.getArgs();
 
-        } catch (NoSuchMethodException e) {
-            log("commitText() not found: " + e);
+                        if (args != null && !args.isEmpty()) {
+
+                            Object firstArg = args.get(0);
+
+                            if (firstArg instanceof CharSequence) {
+
+                                String typedText =
+                                        firstArg.toString();
+
+                                if (typedText
+                                        .toLowerCase()
+                                        .contains("fuck")) {
+
+                                    String newText =
+                                            typedText.replaceAll(
+                                                    "(?i)fuck",
+                                                    "its a bad word"
+                                            );
+
+                                    // Replace commitText's first argument
+                                    args.set(0, newText);
+                                }
+                            }
+                        }
+
+                        // Continue to the original method
+                        return chain.proceed();
+                    });
+
+            log(
+                    4,
+                    "TextReplacer",
+                    "Gboard commitText hook installed."
+            );
+
         } catch (Throwable t) {
-            log("Failed to install hook: " + t);
-        }
-    }
 
-    @XposedHooker
-    public static class TextReplacementHooker
-            implements XposedInterface.Hooker {
-
-        public static Object intercept(
-                XposedInterface.Chain<?> chain
-        ) throws Throwable {
-
-            Object[] args = chain.getArgs().toArray();
-
-            /*
-             * commitText(
-             *     CharSequence text,
-             *     int newCursorPosition
-             * )
-             */
-
-            if (args.length >= 1 && args[0] instanceof CharSequence) {
-
-                String typedText = args[0].toString();
-
-                // Case-insensitive replacement.
-                String newText = typedText.replaceAll(
-                        "(?i)fuck",
-                        "its a bad word"
-                );
-
-                if (!typedText.equals(newText)) {
-                    args[0] = newText;
-                }
-            }
-
-            // Continue to the original method.
-            return chain.proceed(args);
+            log(
+                    6,
+                    "TextReplacer",
+                    "Failed to install commitText hook.",
+                    t
+            );
         }
     }
 }
