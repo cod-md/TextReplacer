@@ -17,24 +17,11 @@ public class MainModule extends XposedModule {
     private static final String TARGET_PACKAGE = "com.google.android.inputmethod.latin";
     private static final String TAG = "TextReplacer";
 
-    // Leave this on until you've confirmed it's working — it logs every
-    // commitText / setComposingText call so you can see exactly what Gboard
-    // is doing on your device. Flip to false once confirmed; it's noisy.
     private static final boolean VERBOSE = true;
 
     private final Set<Class<?>> hookedClasses = new HashSet<>();
 
-    // Cached reference to the real InputConnection, refreshed every time
-    // Gboard asks the framework for one. We call plain public InputConnection
-    // methods directly on this when we need to edit text outside the args of
-    // whatever call we're currently intercepting — no reflection needed since
-    // InputConnection is a normal public interface.
     private volatile InputConnection currentIC = null;
-
-    // The most recent text Gboard marked as "composing" (the underlined,
-    // in-progress word). Some Gboard builds finalize a word through this
-    // composing mechanism and only ever pass the triggering space/punctuation
-    // to commitText — this lets us catch that case too.
     private volatile String lastComposingText = null;
 
     @Override
@@ -89,58 +76,59 @@ public class MainModule extends XposedModule {
                         .intercept(chain -> {
                             try {
                                 List<Object> args = chain.getArgs();
-                                if (args != null && !args.isEmpty()
+                                if (args != null && args.size() >= 2
                                         && args.get(0) instanceof CharSequence) {
 
                                     String typedText = args.get(0).toString();
+                                    int newCursorPos = (Integer) args.get(1);
+
                                     if (VERBOSE) log(4, TAG, "commitText: [" + typedText + "]");
 
                                     if (typedText.toLowerCase().contains("fuck")) {
-                                        // Case 1: the bad word is right there in the
-                                        // committed text (e.g. Gboard committed "fuck "
-                                        // as a single call).
+                                        // Case 1: Word committed as a single chunk
                                         String newText =
                                                 typedText.replaceAll("(?i)fuck", "its a bad word");
-                                        args.set(0, newText);
                                         lastComposingText = null;
+                                        
+                                        if (currentIC != null) {
+                                            // Call commitText manually with our modified string
+                                            currentIC.commitText(newText, newCursorPos);
+                                            // Return true to cancel the original call
+                                            return true;
+                                        }
 
                                     } else if (lastComposingText != null
                                             && lastComposingText.trim().equalsIgnoreCase("fuck")
                                             && typedText.length() <= 2) {
-                                        // Case 2: the word was already finalized through
-                                        // the composing mechanism, and this commitText
-                                        // call is just the trailing space/punctuation
-                                        // that triggered the finalize. Delete what Gboard
-                                        // already placed in the field, then let this call
-                                        // commit the replacement + whatever triggered it.
+                                        // Case 2: Composing text fallback
                                         InputConnection ic = currentIC;
-                                        if (ic != null) {
-                                            ic.deleteSurroundingText(
-                                                    lastComposingText.trim().length(), 0);
-                                            args.set(0, "its a bad word" + typedText);
-                                            log(4, TAG, "Replaced via composing-text fallback");
-                                        }
+                                        int deleteLen = lastComposingText.trim().length();
                                         lastComposingText = null;
                                         
+                                        if (ic != null) {
+                                            ic.deleteSurroundingText(deleteLen, 0);
+                                            ic.commitText("its a bad word" + typedText, newCursorPos);
+                                            log(4, TAG, "Replaced via composing-text fallback");
+                                            return true;
+                                        }
+
                                     } else {
-                                        // Case 3: Character-by-character typing (e.g., in Termux or search bars)
+                                        // Case 3: Character-by-character typing (Termux)
                                         InputConnection ic = currentIC;
                                         if (ic != null) {
-                                            // Peek at the last 4 characters before the cursor
                                             CharSequence beforeCursor = ic.getTextBeforeCursor(4, 0);
                                             if (beforeCursor != null) {
-                                                // Combine what's already in the field with the key just pressed
-                                                String combined = beforeCursor.toString().toLowerCase() + typedText.toLowerCase();
+                                                String combined = beforeCursor.toString().toLowerCase() 
+                                                        + typedText.toLowerCase();
                                                 
                                                 if (combined.endsWith("fuck")) {
-                                                    // Calculate how many characters we need to delete from the screen.
-                                                    // If typedText is "k" (1 char), we need to delete "fuc" (3 chars).
                                                     int charsToDelete = 4 - typedText.length();
+                                                    lastComposingText = null;
                                                     
                                                     ic.deleteSurroundingText(charsToDelete, 0);
-                                                    args.set(0, "its a bad word");
+                                                    ic.commitText("its a bad word", newCursorPos);
                                                     log(4, TAG, "Replaced via character-by-character fallback");
-                                                    lastComposingText = null;
+                                                    return true; 
                                                 }
                                             }
                                         }
@@ -149,6 +137,8 @@ public class MainModule extends XposedModule {
                             } catch (Throwable t) {
                                 log(6, TAG, "Error inside commitText hook", t);
                             }
+                            
+                            // If we didn't find the bad word, let the original character commit normally
                             return chain.proceed();
                         });
             } else {
@@ -172,11 +162,6 @@ public class MainModule extends XposedModule {
 
                                     String text = args.get(0).toString();
                                     if (VERBOSE) log(4, TAG, "setComposingText: [" + text + "]");
-
-                                    // Track only — we deliberately don't rewrite this
-                                    // one live, since doing so mid-word can jump the
-                                    // cursor or fight with backspacing while the user
-                                    // is still typing.
                                     lastComposingText = text;
                                 }
                             } catch (Throwable t) {
@@ -193,9 +178,6 @@ public class MainModule extends XposedModule {
         }
     }
 
-    // Walks up the class hierarchy to find exactly where a method is declared,
-    // since the concrete class Gboard hands back is usually a subclass that
-    // may or may not override each method itself.
     private Method findMethodInHierarchy(
             Class<?> clazz, String methodName, Class<?>... parameterTypes) {
         while (clazz != null && clazz != Object.class) {
