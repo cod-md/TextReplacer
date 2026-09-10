@@ -14,49 +14,67 @@ import java.util.Map;
 
 public class WordAdapter extends RecyclerView.Adapter<WordAdapter.WordViewHolder> {
 
-    private ArrayList<String> wordList;
-    private Map<String, String> dictionary;
-    private OnWordEditListener editListener;
-    private OnWordDeleteListener deleteListener;
+    private final ArrayList<String> wordList;
+    private final Map<String, String> dictionary;
+    private final OnWordActionListener listener;
 
-    public interface OnWordEditListener {
-        void onEdit(String word);
-    }
-
-    public interface OnWordDeleteListener {
-        void onDelete(String word);
+    public interface OnWordActionListener {
+        void onEdit(String badWord, String replacement);
+        void onDelete(String badWord);
     }
 
     public WordAdapter(
             ArrayList<String> wordList,
-            Map<String, String> dictionary,
-            OnWordEditListener editListener,
-            OnWordDeleteListener deleteListener
+            OnWordActionListener listener
     ) {
         this.wordList = wordList;
-        this.dictionary = dictionary;
-        this.editListener = editListener;
-        this.deleteListener = deleteListener;
+        this.dictionary = new java.util.HashMap<>();
+        this.listener = listener;
+    }
+
+    public void updateData(
+            ArrayList<String> newWordList,
+            Map<String, String> newDictionary
+    ) {
+        wordList.clear();
+        wordList.addAll(newWordList);
+
+        dictionary.clear();
+        dictionary.putAll(newDictionary);
+
+        notifyDataSetChanged();
     }
 
     @NonNull
     @Override
-    public WordViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+    public WordViewHolder onCreateViewHolder(
+            @NonNull ViewGroup parent,
+            int viewType
+    ) {
         View view = LayoutInflater.from(parent.getContext())
                 .inflate(R.layout.item_word, parent, false);
+
         return new WordViewHolder(view);
     }
 
     @Override
-    public void onBindViewHolder(@NonNull WordViewHolder holder, int position) {
+    public void onBindViewHolder(
+            @NonNull WordViewHolder holder,
+            int position
+    ) {
         String word = wordList.get(position);
         String replacement = dictionary.get(word);
 
         holder.wordText.setText(word);
         holder.replacementText.setText("→ " + replacement);
 
-        holder.editButton.setOnClickListener(v -> editListener.onEdit(word));
-        holder.deleteButton.setOnClickListener(v -> deleteListener.onDelete(word));
+        holder.editButton.setOnClickListener(v ->
+                listener.onEdit(word, replacement)
+        );
+
+        holder.deleteButton.setOnClickListener(v ->
+                listener.onDelete(word)
+        );
     }
 
     @Override
@@ -65,13 +83,15 @@ public class WordAdapter extends RecyclerView.Adapter<WordAdapter.WordViewHolder
     }
 
     static class WordViewHolder extends RecyclerView.ViewHolder {
+
         TextView wordText;
         TextView replacementText;
         Button editButton;
         Button deleteButton;
 
-        public WordViewHolder(@NonNull View itemView) {
+        WordViewHolder(@NonNull View itemView) {
             super(itemView);
+
             wordText = itemView.findViewById(R.id.word_text);
             replacementText = itemView.findViewById(R.id.replacement_text);
             editButton = itemView.findViewById(R.id.btn_edit);
