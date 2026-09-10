@@ -1,6 +1,8 @@
 package com.example.module;
 
 import android.inputmethodservice.InputMethodService;
+import android.view.inputmethod.InputConnection;
+
 import java.lang.reflect.Method;
 import java.util.HashSet;
 import java.util.List;
@@ -13,9 +15,27 @@ import io.github.libxposed.api.XposedModuleInterface;
 public class MainModule extends XposedModule {
 
     private static final String TARGET_PACKAGE = "com.google.android.inputmethod.latin";
-    
-    // Keep track of classes we've already hooked so we don't hook them repeatedly on every keystroke
+    private static final String TAG = "TextReplacer";
+
+    // Leave this on until you've confirmed it's working — it logs every
+    // commitText / setComposingText call so you can see exactly what Gboard
+    // is doing on your device. Flip to false once confirmed; it's noisy.
+    private static final boolean VERBOSE = true;
+
     private final Set<Class<?>> hookedClasses = new HashSet<>();
+
+    // Cached reference to the real InputConnection, refreshed every time
+    // Gboard asks the framework for one. We call plain public InputConnection
+    // methods directly on this when we need to edit text outside the args of
+    // whatever call we're currently intercepting — no reflection needed since
+    // InputConnection is a normal public interface.
+    private volatile InputConnection currentIC = null;
+
+    // The most recent text Gboard marked as "composing" (the underlined,
+    // in-progress word). Some Gboard builds finalize a word through this
+    // composing mechanism and only ever pass the triggering space/punctuation
+    // to commitText — this lets us catch that case too.
+    private volatile String lastComposingText = null;
 
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
@@ -25,122 +45,141 @@ public class MainModule extends XposedModule {
             return;
         }
 
+        log(4, TAG, "Module attached to Gboard process");
+
         try {
-            // 1. Hook the base framework method to discover the real class at runtime
-            Method getICMethod = InputMethodService.class.getDeclaredMethod("getCurrentInputConnection");
+            Method getICMethod =
+                    InputMethodService.class.getDeclaredMethod("getCurrentInputConnection");
 
             hook(getICMethod)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         Object result = chain.proceed();
-                        
-                        if (result != null) {
-                            Class<?> runtimeClass = result.getClass();
-                            // Pass the discovered class to our dynamic hooker
-                            hookInputConnectionMethods(runtimeClass);
+                        if (result instanceof InputConnection) {
+                            currentIC = (InputConnection) result;
+                            hookInputConnectionMethods(result.getClass());
                         }
-                        
                         return result;
                     });
 
-            log(4, "TextReplacer", "Installed discovery hook on getCurrentInputConnection");
+            log(4, TAG, "Installed discovery hook on getCurrentInputConnection");
 
         } catch (Throwable t) {
-            log(6, "TextReplacer", "Failed to install discovery hook", t);
+            log(6, TAG, "Failed to install discovery hook", t);
         }
     }
 
     private void hookInputConnectionMethods(Class<?> icClass) {
-        // Only hook each discovered class once
         if (hookedClasses.contains(icClass)) {
             return;
         }
         hookedClasses.add(icClass);
 
-        // LOG 1: See what class Gboard is actually using
-        log(4, "TextReplacer", ">>> DISCOVERED REAL CLASS: " + icClass.getName());
+        log(4, TAG, "Discovered real InputConnection class: " + icClass.getName());
 
         try {
-            // 2. Find and hook commitText
-            Method commitText = findMethodInHierarchy(icClass, "commitText", CharSequence.class, int.class);
+            Method commitText =
+                    findMethodInHierarchy(icClass, "commitText", CharSequence.class, int.class);
+
             if (commitText != null) {
-                log(4, "TextReplacer", ">>> FOUND commitText IN: " + commitText.getDeclaringClass().getName());
-                
+                log(4, TAG, "commitText found in " + commitText.getDeclaringClass().getName());
+
                 hook(commitText)
                         .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                         .intercept(chain -> {
                             try {
                                 List<Object> args = chain.getArgs();
-                                if (args != null && !args.isEmpty()) {
-                                    Object firstArg = args.get(0);
-                                    if (firstArg instanceof CharSequence) {
-                                        String typedText = firstArg.toString();
-                                        
-                                        // LOG 2: Watch everything Gboard commits
-                                        log(4, "TextReplacer", "[commitText] Gboard sent: '" + typedText + "'");
-                                        
-                                        if (typedText.toLowerCase().contains("fuck")) {
-                                            log(4, "TextReplacer", "[commitText] MATCH FOUND! Replacing text.");
-                                            String newText = typedText.replaceAll("(?i)fuck", "its a bad word");
-                                            args.set(0, newText);
+                                if (args != null && !args.isEmpty()
+                                        && args.get(0) instanceof CharSequence) {
+
+                                    String typedText = args.get(0).toString();
+                                    if (VERBOSE) log(4, TAG, "commitText: [" + typedText + "]");
+
+                                    if (typedText.toLowerCase().contains("fuck")) {
+                                        // Case 1: the bad word is right there in the
+                                        // committed text (e.g. Gboard committed "fuck "
+                                        // as a single call).
+                                        String newText =
+                                                typedText.replaceAll("(?i)fuck", "its a bad word");
+                                        args.set(0, newText);
+                                        lastComposingText = null;
+
+                                    } else if (lastComposingText != null
+                                            && lastComposingText.trim().equalsIgnoreCase("fuck")
+                                            && typedText.length() <= 2) {
+                                        // Case 2: the word was already finalized through
+                                        // the composing mechanism, and this commitText
+                                        // call is just the trailing space/punctuation
+                                        // that triggered the finalize. Delete what Gboard
+                                        // already placed in the field, then let this call
+                                        // commit the replacement + whatever triggered it.
+                                        InputConnection ic = currentIC;
+                                        if (ic != null) {
+                                            ic.deleteSurroundingText(
+                                                    lastComposingText.trim().length(), 0);
+                                            args.set(0, "its a bad word" + typedText);
+                                            log(4, TAG, "Replaced via composing-text fallback");
                                         }
+                                        lastComposingText = null;
                                     }
                                 }
                             } catch (Throwable t) {
-                                log(6, "TextReplacer", "Error inside commitText hook", t);
+                                log(6, TAG, "Error inside commitText hook", t);
                             }
                             return chain.proceed();
                         });
             } else {
-                log(6, "TextReplacer", ">>> COULD NOT FIND commitText in hierarchy!");
+                log(5, TAG, "commitText NOT FOUND in hierarchy of " + icClass.getName());
             }
 
-            // 3. Find and hook setComposingText
-            Method setComposingText = findMethodInHierarchy(icClass, "setComposingText", CharSequence.class, int.class);
+            Method setComposingText = findMethodInHierarchy(
+                    icClass, "setComposingText", CharSequence.class, int.class);
+
             if (setComposingText != null) {
-                log(4, "TextReplacer", ">>> FOUND setComposingText IN: " + setComposingText.getDeclaringClass().getName());
-                
+                log(4, TAG, "setComposingText found in "
+                        + setComposingText.getDeclaringClass().getName());
+
                 hook(setComposingText)
                         .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                         .intercept(chain -> {
                             try {
                                 List<Object> args = chain.getArgs();
-                                if (args != null && !args.isEmpty()) {
-                                    Object firstArg = args.get(0);
-                                    if (firstArg instanceof CharSequence) {
-                                        String typedText = firstArg.toString();
-                                        
-                                        // LOG 3: Watch everything Gboard is composing (underlined text)
-                                        log(4, "TextReplacer", "[setComposingText] Gboard composing: '" + typedText + "'");
-                                        
-                                        if (typedText.toLowerCase().contains("fuck")) {
-                                            log(4, "TextReplacer", "[setComposingText] MATCH FOUND! Replacing text.");
-                                            String newText = typedText.replaceAll("(?i)fuck", "its a bad word");
-                                            args.set(0, newText);
-                                        }
-                                    }
+                                if (args != null && !args.isEmpty()
+                                        && args.get(0) instanceof CharSequence) {
+
+                                    String text = args.get(0).toString();
+                                    if (VERBOSE) log(4, TAG, "setComposingText: [" + text + "]");
+
+                                    // Track only — we deliberately don't rewrite this
+                                    // one live, since doing so mid-word can jump the
+                                    // cursor or fight with backspacing while the user
+                                    // is still typing.
+                                    lastComposingText = text;
                                 }
                             } catch (Throwable t) {
-                                log(6, "TextReplacer", "Error inside setComposingText hook", t);
+                                log(6, TAG, "Error inside setComposingText hook", t);
                             }
                             return chain.proceed();
                         });
             } else {
-                log(6, "TextReplacer", ">>> COULD NOT FIND setComposingText in hierarchy!");
+                log(5, TAG, "setComposingText NOT FOUND in hierarchy of " + icClass.getName());
             }
 
         } catch (Throwable t) {
-            log(6, "TextReplacer", "Failed to dynamically hook methods for " + icClass.getName(), t);
+            log(6, TAG, "Failed to hook InputConnection methods on " + icClass.getName(), t);
         }
     }
 
-    // Helper method to walk up the class hierarchy to find exactly where the method is declared
-    private Method findMethodInHierarchy(Class<?> clazz, String methodName, Class<?>... parameterTypes) {
+    // Walks up the class hierarchy to find exactly where a method is declared,
+    // since the concrete class Gboard hands back is usually a subclass that
+    // may or may not override each method itself.
+    private Method findMethodInHierarchy(
+            Class<?> clazz, String methodName, Class<?>... parameterTypes) {
         while (clazz != null && clazz != Object.class) {
             try {
                 return clazz.getDeclaredMethod(methodName, parameterTypes);
             } catch (NoSuchMethodException e) {
-                clazz = clazz.getSuperclass(); // Check the parent class if not found here
+                clazz = clazz.getSuperclass();
             }
         }
         return null;
