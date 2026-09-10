@@ -17,9 +17,7 @@ public class MainModule extends XposedModule {
     // Keep track of classes we've already hooked so we don't hook them repeatedly on every keystroke
     private final Set<Class<?>> hookedClasses = new HashSet<>();
 
-    public MainModule(XposedInterface base, XposedModuleInterface.ModuleLoadedParam param) {
-        super(base, param);
-    }
+    // Constructor removed to fix Error #1: XposedModule requires no arguments
 
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
@@ -69,7 +67,24 @@ public class MainModule extends XposedModule {
             if (commitText != null) {
                 hook(commitText)
                         .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                        .intercept(this::handleTextInterception);
+                        .intercept(chain -> { // Inline lambda fixes Error #2
+                            try {
+                                List<Object> args = chain.getArgs();
+                                if (args != null && !args.isEmpty()) {
+                                    Object firstArg = args.get(0);
+                                    if (firstArg instanceof CharSequence) {
+                                        String typedText = firstArg.toString();
+                                        if (typedText.toLowerCase().contains("fuck")) {
+                                            String newText = typedText.replaceAll("(?i)fuck", "its a bad word");
+                                            args.set(0, newText);
+                                        }
+                                    }
+                                }
+                            } catch (Throwable t) {
+                                log(6, "TextReplacer", "Error inside commitText hook", t);
+                            }
+                            return chain.proceed();
+                        });
                 log(4, "TextReplacer", "Hooked commitText on " + commitText.getDeclaringClass().getName());
             }
 
@@ -78,37 +93,30 @@ public class MainModule extends XposedModule {
             if (setComposingText != null) {
                 hook(setComposingText)
                         .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                        .intercept(this::handleTextInterception);
+                        .intercept(chain -> {
+                            try {
+                                List<Object> args = chain.getArgs();
+                                if (args != null && !args.isEmpty()) {
+                                    Object firstArg = args.get(0);
+                                    if (firstArg instanceof CharSequence) {
+                                        String typedText = firstArg.toString();
+                                        if (typedText.toLowerCase().contains("fuck")) {
+                                            String newText = typedText.replaceAll("(?i)fuck", "its a bad word");
+                                            args.set(0, newText);
+                                        }
+                                    }
+                                }
+                            } catch (Throwable t) {
+                                log(6, "TextReplacer", "Error inside setComposingText hook", t);
+                            }
+                            return chain.proceed();
+                        });
                 log(4, "TextReplacer", "Hooked setComposingText on " + setComposingText.getDeclaringClass().getName());
             }
 
         } catch (Throwable t) {
             log(6, "TextReplacer", "Failed to dynamically hook methods for " + icClass.getName(), t);
         }
-    }
-
-    // Centralized logic for text replacement, wrapped in a try/catch so real errors surface
-    private Object handleTextInterception(XposedInterface.Interceptor.Chain chain) throws Throwable {
-        try {
-            List<Object> args = chain.getArgs();
-
-            if (args != null && !args.isEmpty()) {
-                Object firstArg = args.get(0);
-
-                if (firstArg instanceof CharSequence) {
-                    String typedText = firstArg.toString();
-
-                    if (typedText.toLowerCase().contains("fuck")) {
-                        String newText = typedText.replaceAll("(?i)fuck", "its a bad word");
-                        args.set(0, newText);
-                    }
-                }
-            }
-        } catch (Throwable t) {
-            log(6, "TextReplacer", "Error inside text replacement interceptor", t);
-        }
-
-        return chain.proceed();
     }
 
     // Helper method to walk up the class hierarchy to find exactly where the method is declared
