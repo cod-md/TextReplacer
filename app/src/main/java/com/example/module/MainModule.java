@@ -1,52 +1,91 @@
 package com.example.module;
 
 import android.view.inputmethod.InputConnectionWrapper;
+
 import java.lang.reflect.Method;
 
 import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
-import io.github.libxposed.api.XposedModuleInterface;
 import io.github.libxposed.api.annotations.XposedHooker;
 
 public class MainModule extends XposedModule {
 
-    public MainModule(XposedInterface base, XposedModuleInterface.ModuleLoadedParam param) {
-        super(base, param);
+    public MainModule() {
+        super();
     }
 
     @Override
-    public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
+    public void onPackageLoaded(
+            XposedInterface.PackageLoadedParam param
+    ) {
         super.onPackageLoaded(param);
-        
-        // Prevent hooking the same method multiple times per app
-        if (!param.isFirstPackage()) return;
+
+        // Only hook Gboard.
+        if (!"com.google.android.inputmethod.latin".equals(param.getPackageName())) {
+            return;
+        }
+
+        // Avoid installing the hook more than once.
+        if (!param.isFirstPackage()) {
+            return;
+        }
 
         try {
-            // Target the keyboard's commitText method (triggered when you hit space on a word)
-            Method commitTextMethod = InputConnectionWrapper.class.getDeclaredMethod("commitText", CharSequence.class, int.class);
-            hook(commitTextMethod, TextReplacementHooker.class);
+            Method commitText = InputConnectionWrapper.class.getDeclaredMethod(
+                    "commitText",
+                    CharSequence.class,
+                    int.class
+            );
+
+            hook(commitText)
+                    .setExceptionMode(
+                            XposedInterface.ExceptionMode.PROTECTIVE
+                    )
+                    .intercept(TextReplacementHooker.class);
+
+            log("Gboard commitText hook installed.");
+
         } catch (NoSuchMethodException e) {
-            // Method not found on this specific Android version, ignore safely
+            log("commitText() not found: " + e);
+        } catch (Throwable t) {
+            log("Failed to install hook: " + t);
         }
     }
 
-    // Modern libxposed hook structure
     @XposedHooker
-    public static class TextReplacementHooker implements XposedInterface.Hooker {
-        public static void before(XposedInterface.BeforeHookCallback callback) {
-            Object[] args = callback.getArgs();
-            
-            // Ensure arguments exist and the first argument is the typed text
-            if (args != null && args.length > 0 && args[0] instanceof CharSequence) {
+    public static class TextReplacementHooker
+            implements XposedInterface.Hooker {
+
+        public static Object intercept(
+                XposedInterface.Chain<?> chain
+        ) throws Throwable {
+
+            Object[] args = chain.getArgs().toArray();
+
+            /*
+             * commitText(
+             *     CharSequence text,
+             *     int newCursorPosition
+             * )
+             */
+
+            if (args.length >= 1 && args[0] instanceof CharSequence) {
+
                 String typedText = args[0].toString();
-                
-                // Case-insensitive check for your target word
-                if (typedText.toLowerCase().contains("fuck")) {
-                    // Replace the word before it is committed to the text field
-                    String newText = typedText.replaceAll("(?i)fuck", "its a bad word");
+
+                // Case-insensitive replacement.
+                String newText = typedText.replaceAll(
+                        "(?i)fuck",
+                        "its a bad word"
+                );
+
+                if (!typedText.equals(newText)) {
                     args[0] = newText;
                 }
             }
+
+            // Continue to the original method.
+            return chain.proceed(args);
         }
     }
 }
