@@ -5,3 +5,7 @@ plugins {
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
+
+dependencies {
+    compileOnly("io.github.libxposed:api:102.0.0")
+}
