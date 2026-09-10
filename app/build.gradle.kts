@@ -45,7 +45,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.8.0")
 
     // Needed by MainActivity to communicate with LSPosed
-    implementation("io.github.libxposed:service:102.0.0")
+    implementation("io.github.libxposed:service:101.0.0")
 
     // Xposed API used by your module
     compileOnly("io.github.libxposed:api:101.0.0")
