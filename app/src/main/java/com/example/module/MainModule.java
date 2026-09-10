@@ -1,9 +1,11 @@
 package com.example.module;
 
 import android.inputmethodservice.InputMethodService;
-import android.view.inputmethod.InputConnection;
-import android.view.inputmethod.InputConnectionWrapper;
 import java.lang.reflect.Method;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
 import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
 import io.github.libxposed.api.XposedModuleInterface;
@@ -11,67 +13,113 @@ import io.github.libxposed.api.XposedModuleInterface;
 public class MainModule extends XposedModule {
 
     private static final String TARGET_PACKAGE = "com.google.android.inputmethod.latin";
+    
+    // Keep track of classes we've already hooked so we don't hook them repeatedly on every keystroke
+    private final Set<Class<?>> hookedClasses = new HashSet<>();
+
+    public MainModule(XposedInterface base, XposedModuleInterface.ModuleLoadedParam param) {
+        super(base, param);
+    }
 
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         super.onPackageLoaded(param);
 
-        // Only run inside Gboard
         if (!TARGET_PACKAGE.equals(param.getPackageName())) {
             return;
         }
 
         try {
-            // 1. Target the core method Gboard uses to get the text field connection
+            // 1. Hook the base framework method to discover the real class at runtime
             Method getICMethod = InputMethodService.class.getDeclaredMethod("getCurrentInputConnection");
 
             hook(getICMethod)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
-                        
-                        // Let the original method run first to get the REAL InputConnection
                         Object result = chain.proceed();
-
-                        if (result instanceof InputConnection) {
-                            InputConnection originalIc = (InputConnection) result;
-
-                            // 2. Wrap it with our own InputConnectionWrapper and return it to Gboard
-                            return new InputConnectionWrapper(originalIc, true) {
-                                
-                                @Override
-                                public boolean commitText(CharSequence text, int newCursorPosition) {
-                                    if (text != null) {
-                                        String typedText = text.toString();
-                                        if (typedText.toLowerCase().contains("fuck")) {
-                                            text = typedText.replaceAll("(?i)fuck", "its a bad word");
-                                        }
-                                    }
-                                    return super.commitText(text, newCursorPosition);
-                                }
-
-                                // 3. Catch composing text as well! 
-                                // Gboard uses this constantly while typing before hitting space.
-                                @Override
-                                public boolean setComposingText(CharSequence text, int newCursorPosition) {
-                                    if (text != null) {
-                                        String typedText = text.toString();
-                                        if (typedText.toLowerCase().contains("fuck")) {
-                                            text = typedText.replaceAll("(?i)fuck", "its a bad word");
-                                        }
-                                    }
-                                    return super.setComposingText(text, newCursorPosition);
-                                }
-                            };
+                        
+                        if (result != null) {
+                            Class<?> runtimeClass = result.getClass();
+                            // Pass the discovered class to our dynamic hooker
+                            hookInputConnectionMethods(runtimeClass);
                         }
-
-                        // Fallback if result isn't an InputConnection
+                        
                         return result;
                     });
 
-            log(4, "TextReplacer", "Gboard InputConnection hook installed.");
+            log(4, "TextReplacer", "Installed discovery hook on getCurrentInputConnection");
 
         } catch (Throwable t) {
-            log(6, "TextReplacer", "Failed to install InputConnection hook.", t);
+            log(6, "TextReplacer", "Failed to install discovery hook", t);
         }
+    }
+
+    private void hookInputConnectionMethods(Class<?> icClass) {
+        // Only hook each discovered class once
+        if (hookedClasses.contains(icClass)) {
+            return;
+        }
+        hookedClasses.add(icClass);
+
+        log(4, "TextReplacer", "Discovered real InputConnection class: " + icClass.getName());
+
+        try {
+            // 2. Find and hook commitText in the class hierarchy
+            Method commitText = findMethodInHierarchy(icClass, "commitText", CharSequence.class, int.class);
+            if (commitText != null) {
+                hook(commitText)
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(this::handleTextInterception);
+                log(4, "TextReplacer", "Hooked commitText on " + commitText.getDeclaringClass().getName());
+            }
+
+            // 3. Find and hook setComposingText in the class hierarchy
+            Method setComposingText = findMethodInHierarchy(icClass, "setComposingText", CharSequence.class, int.class);
+            if (setComposingText != null) {
+                hook(setComposingText)
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(this::handleTextInterception);
+                log(4, "TextReplacer", "Hooked setComposingText on " + setComposingText.getDeclaringClass().getName());
+            }
+
+        } catch (Throwable t) {
+            log(6, "TextReplacer", "Failed to dynamically hook methods for " + icClass.getName(), t);
+        }
+    }
+
+    // Centralized logic for text replacement, wrapped in a try/catch so real errors surface
+    private Object handleTextInterception(XposedInterface.Interceptor.Chain chain) throws Throwable {
+        try {
+            List<Object> args = chain.getArgs();
+
+            if (args != null && !args.isEmpty()) {
+                Object firstArg = args.get(0);
+
+                if (firstArg instanceof CharSequence) {
+                    String typedText = firstArg.toString();
+
+                    if (typedText.toLowerCase().contains("fuck")) {
+                        String newText = typedText.replaceAll("(?i)fuck", "its a bad word");
+                        args.set(0, newText);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            log(6, "TextReplacer", "Error inside text replacement interceptor", t);
+        }
+
+        return chain.proceed();
+    }
+
+    // Helper method to walk up the class hierarchy to find exactly where the method is declared
+    private Method findMethodInHierarchy(Class<?> clazz, String methodName, Class<?>... parameterTypes) {
+        while (clazz != null && clazz != Object.class) {
+            try {
+                return clazz.getDeclaredMethod(methodName, parameterTypes);
+            } catch (NoSuchMethodException e) {
+                clazz = clazz.getSuperclass(); // Check the parent class if not found here
+            }
+        }
+        return null;
     }
 }
