@@ -1,23 +1,19 @@
 package com.example.module;
 
+import android.inputmethodservice.InputMethodService;
+import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputConnectionWrapper;
-
 import java.lang.reflect.Method;
-import java.util.List;
-
 import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
 import io.github.libxposed.api.XposedModuleInterface;
 
 public class MainModule extends XposedModule {
 
-    private static final String TARGET_PACKAGE =
-            "com.google.android.inputmethod.latin";
+    private static final String TARGET_PACKAGE = "com.google.android.inputmethod.latin";
 
     @Override
-    public void onPackageLoaded(
-            XposedModuleInterface.PackageLoadedParam param) {
-
+    public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         super.onPackageLoaded(param);
 
         // Only run inside Gboard
@@ -26,64 +22,56 @@ public class MainModule extends XposedModule {
         }
 
         try {
-            Method commitTextMethod =
-                    InputConnectionWrapper.class.getDeclaredMethod(
-                            "commitText",
-                            CharSequence.class,
-                            int.class
-                    );
+            // 1. Target the core method Gboard uses to get the text field connection
+            Method getICMethod = InputMethodService.class.getDeclaredMethod("getCurrentInputConnection");
 
-            hook(commitTextMethod)
-                    .setExceptionMode(
-                            XposedInterface.ExceptionMode.PROTECTIVE
-                    )
+            hook(getICMethod)
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
+                        
+                        // Let the original method run first to get the REAL InputConnection
+                        Object result = chain.proceed();
 
-                        List<Object> args = chain.getArgs();
+                        if (result instanceof InputConnection) {
+                            InputConnection originalIc = (InputConnection) result;
 
-                        if (args != null && !args.isEmpty()) {
-
-                            Object firstArg = args.get(0);
-
-                            if (firstArg instanceof CharSequence) {
-
-                                String typedText =
-                                        firstArg.toString();
-
-                                if (typedText
-                                        .toLowerCase()
-                                        .contains("fuck")) {
-
-                                    String newText =
-                                            typedText.replaceAll(
-                                                    "(?i)fuck",
-                                                    "its a bad word"
-                                            );
-
-                                    // Replace commitText's first argument
-                                    args.set(0, newText);
+                            // 2. Wrap it with our own InputConnectionWrapper and return it to Gboard
+                            return new InputConnectionWrapper(originalIc, true) {
+                                
+                                @Override
+                                public boolean commitText(CharSequence text, int newCursorPosition) {
+                                    if (text != null) {
+                                        String typedText = text.toString();
+                                        if (typedText.toLowerCase().contains("fuck")) {
+                                            text = typedText.replaceAll("(?i)fuck", "its a bad word");
+                                        }
+                                    }
+                                    return super.commitText(text, newCursorPosition);
                                 }
-                            }
+
+                                // 3. Catch composing text as well! 
+                                // Gboard uses this constantly while typing before hitting space.
+                                @Override
+                                public boolean setComposingText(CharSequence text, int newCursorPosition) {
+                                    if (text != null) {
+                                        String typedText = text.toString();
+                                        if (typedText.toLowerCase().contains("fuck")) {
+                                            text = typedText.replaceAll("(?i)fuck", "its a bad word");
+                                        }
+                                    }
+                                    return super.setComposingText(text, newCursorPosition);
+                                }
+                            };
                         }
 
-                        // Continue to the original method
-                        return chain.proceed();
+                        // Fallback if result isn't an InputConnection
+                        return result;
                     });
 
-            log(
-                    4,
-                    "TextReplacer",
-                    "Gboard commitText hook installed."
-            );
+            log(4, "TextReplacer", "Gboard InputConnection hook installed.");
 
         } catch (Throwable t) {
-
-            log(
-                    6,
-                    "TextReplacer",
-                    "Failed to install commitText hook.",
-                    t
-            );
+            log(6, "TextReplacer", "Failed to install InputConnection hook.", t);
         }
     }
 }
