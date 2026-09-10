@@ -4,25 +4,23 @@ plugins {
 
 android {
     namespace = "com.example.module"
-    compileSdk = 36 // Can be modified as needed
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.module"
         minSdk = 31
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
-    }
-
-    lint {
-        targetSdk = 36
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
+                "proguard-rules.pro"
             )
         }
     }
@@ -41,18 +39,7 @@ android {
     }
 }
 
-
-
 dependencies {
     compileOnly("androidx.annotation:annotation:1.9.1")
-    compileOnly("io.github.libxposed:api")
-}
-
-
-plugins {
-    id("com.android.application")
-}
-
-dependencies {
     compileOnly("io.github.libxposed:api:102.0.0")
 }
