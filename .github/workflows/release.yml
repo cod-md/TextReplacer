@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: text-replacer-v1.0.0-release
@@ -21,7 +22,23 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Publish v1.0.0
+      - name: Download original successful v1.0.0 build
+        uses: actions/download-artifact@v4
+        with:
+          name: app-debug
+          path: release-apk
+          github-token: ${{ github.token }}
+          run-id: 34473426486
+
+      - name: Verify APK provenance
+        run: |
+          git fetch origin 0d4be5f766c8c2dd35d9b5a1dce0d6e72aeea843
+          git diff --exit-code 0d4be5f766c8c2dd35d9b5a1dce0d6e72aeea843 HEAD -- app build.gradle.kts settings.gradle.kts gradle.properties gradle libxposed-api .gitmodules
+          test -s release-apk/app-debug.apk
+          cp release-apk/app-debug.apk TextReplacer-v1.0.0-debug.apk
+          sha256sum TextReplacer-v1.0.0-debug.apk
+
+      - name: Attach APK and update release notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -31,16 +48,17 @@ jobs:
           - Custom text replacement through Gboard.
           - Companion app to add, edit, and delete replacement rules.
           - Case-insensitive matching and framework remote preference storage.
-          - Updated README with installation instructions, examples, and implementation limitations.
+          - Updated README with setup instructions, examples, and limitations.
+
+          **Download:** TextReplacer-v1.0.0-debug.apk under Assets.
 
           Requires Android 12+ and a rooted device with a compatible modern libxposed framework. Enable the module for Gboard and the companion app. Restart Gboard after changing rules.
 
           Matching can replace substrings inside longer words. Verbose framework logs can include typed text. See the README for details.
 
-          **Source release only:** no APK is attached. The current APK build is blocked because the pinned libxposed-api submodule at https://github.com/libxposed/api is unavailable (GitHub returns 404). The source archives do not include submodule contents.
+          The APK is the original debug build from successful GitHub Actions run 34473426486, built from commit 0d4be5f766c8c2dd35d9b5a1dce0d6e72aeea843. Its app and build source match this release; subsequent changes only affect documentation and release workflows. It is not a production-signed release build.
+
+          Rebuilding from source is currently blocked by the unavailable libxposed-api submodule repository. This does not prevent downloading the existing APK.
           EOF
-          if gh release view v1.0.0 >/dev/null 2>&1; then
-            echo "v1.0.0 already exists; leaving the published release unchanged."
-          else
-            gh release create v1.0.0 --target "$GITHUB_SHA" --title "Text Replacer v1.0.0" --notes-file release-notes.md
-          fi
+          gh release upload v1.0.0 TextReplacer-v1.0.0-debug.apk
+          gh release edit v1.0.0 --notes-file release-notes.md
