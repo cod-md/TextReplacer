@@ -22,7 +22,7 @@ This module hooks Gboard. Other keyboards and text entered without Gboard are ou
 
 ## Install and use
 
-1. Download the APK from [Releases](https://github.com/cod-md/TextReplacer/releases) and install it.
+1. Install a built Text Replacer APK. Check [Releases](https://github.com/cod-md/TextReplacer/releases) for available downloads; v1.0.0 is a source-only release with no APK attached.
 2. Enable **Text Replacer** in your Xposed manager. Keep Gboard and Text Replacer's companion app selected in the module scope.
 3. Restart Gboard or reboot the device to load the module.
 4. Open Text Replacer and wait for the framework service to connect.
@@ -54,6 +54,8 @@ git clone --recurse-submodules https://github.com/cod-md/TextReplacer.git
 cd TextReplacer
 ./gradlew assembleDebug
 ```
+
+**Current build blocker:** the pinned `libxposed-api` submodule repository at `https://github.com/libxposed/api` currently returns 404. Restore access to that dependency or supply a compatible pinned API source before building. GitHub source archives do not include submodule contents.
 
 Use an Android SDK installation with API 36 and a Java 21 toolchain available to Gradle. The project compiles/targets SDK 36, uses Java 21 source compatibility, and currently sets app version `1.0.0` (version code `1`).
 
