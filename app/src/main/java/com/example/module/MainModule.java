@@ -254,7 +254,7 @@ public class MainModule extends XposedModule {
                         log(6, TAG, "Error inside commitText hook", t);
                     }
 
-                    // CASE 4: Mid-word insertion (e.g., typing 'c' between 'fu' and 'k')
+                    // CASE 4: Mid-word insertion (e.g., typing 'r' between 'b' and 'b')
                     Object result = chain.proceed();
                     try {
                         checkAndReplaceAroundCursor(ic);
@@ -390,7 +390,7 @@ public class MainModule extends XposedModule {
 
     /**
      * Scans text both before and after the cursor so that joining split text
-     * (e.g., typing "fuc k" and deleting the space between 'c' and 'k', or inserting
+     * (e.g., typing "br b" and deleting the space between 'r' and 'b', or inserting
      * a character in the middle of a word) still triggers replacement.
      */
     private boolean checkAndReplaceAroundCursor(InputConnection ic) {
