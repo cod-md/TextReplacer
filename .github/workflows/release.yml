@@ -2,7 +2,7 @@ name: Publish Text Replacer Release
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
     paths:
       - '.github/workflows/release.yml'
   workflow_dispatch:
@@ -11,54 +11,48 @@ permissions:
   contents: write
   actions: read
 
-concurrency:
-  group: text-replacer-v1.0.0-release
-  cancel-in-progress: false
-
 jobs:
-  release:
+  publish-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Download original successful v1.0.0 build
+      - name: Download built debug APK from run 45486044625
         uses: actions/download-artifact@v4
         with:
           name: app-debug
-          path: release-apk
-          github-token: ${{ github.token }}
-          run-id: 34473426486
+          run-id: 45486044625
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: dist
 
-      - name: Verify APK provenance
+      - name: Rename APK and compute SHA-256
         run: |
-          git fetch origin 0d4be5f766c8c2dd35d9b5a1dce0d6e72aeea843
-          git diff --exit-code 0d4be5f766c8c2dd35d9b5a1dce0d6e72aeea843 HEAD -- app build.gradle.kts settings.gradle.kts gradle.properties gradle libxposed-api .gitmodules
-          test -s release-apk/app-debug.apk
-          cp release-apk/app-debug.apk TextReplacer-v1.0.0-debug.apk
-          sha256sum TextReplacer-v1.0.0-debug.apk
+          mv dist/app-debug.apk dist/TextReplacer-v1.1.0-debug.apk
+          SHA256=$(sha256sum dist/TextReplacer-v1.1.0-debug.apk | awk '{print $1}')
+          echo "APK_SHA256=$SHA256" >> "$GITHUB_ENV"
+          echo "SHA-256: $SHA256"
 
-      - name: Attach APK and update release notes
+      - name: Create Release v1.1.0
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cat > release-notes.md <<'EOF'
-          Initial versioned release of Text Replacer.
+          cat <<EOF > release-notes.md
+          ## Text Replacer v1.1.0
 
-          - Custom text replacement through Gboard.
-          - Companion app to add, edit, and delete replacement rules.
-          - Case-insensitive matching and framework remote preference storage.
-          - Updated README with setup instructions, examples, and limitations.
+          ### What's New
+          - Detects and replaces blocked words formed after deleting spaces or characters between split letters (e.g. typing \`fuc k\` and backspacing the space between \`c\` and \`k\`).
+          - Detects and replaces blocked words formed by inserting characters mid-word or via composing text updates.
+          - Adds hooks for \`deleteSurroundingText\`, \`deleteSurroundingTextInCodePoints\`, \`sendKeyEvent\` (\`KEYCODE_DEL\` / \`KEYCODE_FORWARD_DEL\`), \`setComposingText\`, and \`finishComposingText\` with a re-entrancy guard.
 
-          **Download:** TextReplacer-v1.0.0-debug.apk under Assets.
-
-          Requires Android 12+ and a rooted device with a compatible modern libxposed framework. Enable the module for Gboard and the companion app. Restart Gboard after changing rules.
-
-          Matching can replace substrings inside longer words. Verbose framework logs can include typed text. See the README for details.
-
-          The APK is the original debug build from successful GitHub Actions run 34473426486, built from commit 0d4be5f766c8c2dd35d9b5a1dce0d6e72aeea843. Its app and build source match this release; subsequent changes only affect documentation and release workflows. It is not a production-signed release build.
-
-          Rebuilding from source is currently blocked by the unavailable libxposed-api submodule repository. This does not prevent downloading the existing APK.
+          ### Download & Verification
+          - **APK:** \`TextReplacer-v1.1.0-debug.apk\` (built from commit \`bb48204\` in Actions run #59)
+          - **SHA-256:** \`${APK_SHA256}\`
           EOF
-          gh release upload v1.0.0 TextReplacer-v1.0.0-debug.apk
-          gh release edit v1.0.0 --notes-file release-notes.md
+
+          if gh release view v1.1.0 >/dev/null 2>&1; then
+            gh release upload v1.1.0 dist/TextReplacer-v1.1.0-debug.apk --clobber
+            gh release edit v1.1.0 --title "Text Replacer v1.1.0" --notes-file release-notes.md
+          else
+            gh release create v1.1.0 dist/TextReplacer-v1.1.0-debug.apk \
+              --target main \
+              --title "Text Replacer v1.1.0" \
+              --notes-file release-notes.md
+          fi
