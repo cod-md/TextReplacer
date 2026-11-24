@@ -39,7 +39,7 @@ jobs:
           ## Text Replacer v1.1.0
 
           ### What's New
-          - Detects and replaces blocked words formed after deleting spaces or characters between split letters (e.g. typing \`fuc k\` and backspacing the space between \`c\` and \`k\`).
+          - Detects and replaces blocked words formed after deleting spaces or characters between split letters (e.g. typing \`br b\` and backspacing the space between \`r\` and \`b\`).
           - Detects and replaces blocked words formed by inserting characters mid-word or via composing text updates.
           - Adds hooks for \`deleteSurroundingText\`, \`deleteSurroundingTextInCodePoints\`, \`sendKeyEvent\` (\`KEYCODE_DEL\` / \`KEYCODE_FORWARD_DEL\`), \`setComposingText\`, and \`finishComposingText\` with a re-entrancy guard.
 
