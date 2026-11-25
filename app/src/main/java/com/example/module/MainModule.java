@@ -65,7 +65,7 @@ public class MainModule extends XposedModule {
 
         if (SETTINGS_PACKAGE.equals(pkg)) {
             log(4, TAG, "Module attached to Settings process");
-            installPrivateDnsLockHooks(param.getClassLoader());
+            installPrivateDnsLockHooks(Settings.Global.class.getClassLoader());
             return;
         }
 
