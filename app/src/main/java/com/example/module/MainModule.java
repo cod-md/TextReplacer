@@ -1,7 +1,11 @@
 package com.example.module;
 
+import android.content.ContentResolver;
 import android.content.SharedPreferences;
 import android.inputmethodservice.InputMethodService;
+import android.os.UserHandle;
+import android.os.UserManager;
+import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.inputmethod.InputConnection;
 
@@ -23,11 +27,14 @@ import io.github.libxposed.api.XposedModuleInterface;
 public class MainModule extends XposedModule {
 
     private static final String TARGET_PACKAGE = "com.google.android.inputmethod.latin";
+    private static final String SETTINGS_PACKAGE = "com.android.settings";
     private static final String TAG = "TextReplacer";
     private static final boolean VERBOSE = true;
 
     private static final String PREFS_NAME = "mod_prefs";
     private static final String WORD_MAP_KEY = "word_map";
+    private static final String LOCK_PRIVATE_DNS_KEY = "lock_private_dns";
+    private static final String DISALLOW_CONFIG_PRIVATE_DNS = "no_config_private_dns";
 
     private final Set<Class<?>> hookedClasses = new HashSet<>();
     private final ThreadLocal<Boolean> isInternalEdit = ThreadLocal.withInitial(() -> false);
@@ -54,7 +61,15 @@ public class MainModule extends XposedModule {
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         super.onPackageLoaded(param);
 
-        if (!TARGET_PACKAGE.equals(param.getPackageName())) {
+        String pkg = param.getPackageName();
+
+        if (SETTINGS_PACKAGE.equals(pkg)) {
+            log(4, TAG, "Module attached to Settings process");
+            installPrivateDnsLockHooks(param.getClassLoader());
+            return;
+        }
+
+        if (!TARGET_PACKAGE.equals(pkg)) {
             return;
         }
 
@@ -80,6 +95,104 @@ public class MainModule extends XposedModule {
         } catch (Throwable t) {
             log(6, TAG, "Failed to install discovery hook", t);
         }
+    }
+
+    private boolean isPrivateDnsLocked() {
+        try {
+            if (remotePrefs == null) {
+                remotePrefs = getRemotePreferences(PREFS_NAME);
+            }
+            return remotePrefs != null && remotePrefs.getBoolean(LOCK_PRIVATE_DNS_KEY, false);
+        } catch (Throwable t) {
+            log(6, TAG, "Failed to read Private DNS lock state", t);
+            return false;
+        }
+    }
+
+    private boolean isPrivateDnsKey(Object arg) {
+        if (!(arg instanceof String)) {
+            return false;
+        }
+        return ((String) arg).toLowerCase(Locale.ROOT).contains("private_dns");
+    }
+
+    private void installPrivateDnsLockHooks(ClassLoader classLoader) {
+        hookUserRestrictionMethod(UserManager.class, "hasUserRestriction", String.class);
+        hookUserRestrictionMethod(UserManager.class, "hasUserRestriction", String.class, UserHandle.class);
+        hookUserRestrictionMethod(UserManager.class, "hasBaseUserRestriction", String.class, UserHandle.class);
+
+        hookSettingsPutMethods(Settings.Global.class);
+        hookSettingsPutMethods(Settings.Secure.class);
+
+        try {
+            Class<?> csmClass = Class.forName("android.net.ConnectivitySettingsManager", false, classLoader);
+            for (Method method : csmClass.getDeclaredMethods()) {
+                String name = method.getName();
+                if ("setPrivateDnsMode".equals(name) || "setPrivateDnsHostname".equals(name)) {
+                    hook(method)
+                            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                            .intercept(chain -> {
+                                if (isPrivateDnsLocked()) {
+                                    log(4, TAG, "Blocked ConnectivitySettingsManager." + name);
+                                    return null;
+                                }
+                                return chain.proceed();
+                            });
+                    log(4, TAG, "Hooked ConnectivitySettingsManager." + name);
+                }
+            }
+        } catch (Throwable t) {
+            log(5, TAG, "ConnectivitySettingsManager hooks skipped: " + t.getMessage());
+        }
+    }
+
+    private void hookUserRestrictionMethod(Class<?> clazz, String methodName, Class<?>... paramTypes) {
+        try {
+            Method method = clazz.getDeclaredMethod(methodName, paramTypes);
+            hook(method)
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        List<Object> args = chain.getArgs();
+                        if (args != null && !args.isEmpty()
+                                && DISALLOW_CONFIG_PRIVATE_DNS.equals(args.get(0))
+                                && isPrivateDnsLocked()) {
+                            return true;
+                        }
+                        return chain.proceed();
+                    });
+            log(4, TAG, "Hooked " + clazz.getSimpleName() + "." + methodName);
+        } catch (Throwable t) {
+            log(5, TAG, "Skipped " + clazz.getSimpleName() + "." + methodName + ": " + t.getMessage());
+        }
+    }
+
+    private void hookSettingsPutMethods(Class<?> settingsTableClass) {
+        for (Method method : settingsTableClass.getDeclaredMethods()) {
+            String name = method.getName();
+            if (!name.startsWith("putString") && !name.startsWith("putInt")) {
+                continue;
+            }
+            Class<?>[] params = method.getParameterTypes();
+            if (params.length >= 3 && params[0] == ContentResolver.class && params[1] == String.class) {
+                try {
+                    hook(method)
+                            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                            .intercept(chain -> {
+                                List<Object> args = chain.getArgs();
+                                if (args != null && args.size() >= 2
+                                        && isPrivateDnsKey(args.get(1))
+                                        && isPrivateDnsLocked()) {
+                                    log(4, TAG, "Blocked " + settingsTableClass.getSimpleName() + "." + name + " for key: " + args.get(1));
+                                    return false;
+                                }
+                                return chain.proceed();
+                            });
+                } catch (Throwable t) {
+                    log(5, TAG, "Skipped " + settingsTableClass.getSimpleName() + "." + name + ": " + t.getMessage());
+                }
+            }
+        }
+        log(4, TAG, "Installed Private DNS write guards on " + settingsTableClass.getSimpleName());
     }
 
     private void loadDictionary() {
@@ -173,7 +286,6 @@ public class MainModule extends XposedModule {
                                 log(4, TAG, "commitText: [" + typedText + "]");
                             }
 
-                            // CASE 1: Complete word/chunk arrives at once
                             String replacement = findReplacement(typedText);
                             if (replacement != null && ic != null) {
                                 String newText = replaceAllWords(typedText);
@@ -188,7 +300,6 @@ public class MainModule extends XposedModule {
                                 return true;
                             }
 
-                            // CASE 2: Composing text fallback
                             if (lastComposingText != null && containsDictionaryWord(lastComposingText) && typedText.length() <= 2) {
                                 String composing = lastComposingText;
                                 lastComposingText = null;
@@ -217,7 +328,6 @@ public class MainModule extends XposedModule {
                                 }
                             }
 
-                            // CASE 3: Character-by-character typing at end of cursor
                             if (ic != null) {
                                 int maxWordLength = getLongestWordLength();
                                 if (maxWordLength > 0) {

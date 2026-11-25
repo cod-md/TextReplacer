@@ -26,12 +26,13 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String PREFS_NAME = "mod_prefs";
     private static final String WORD_MAP_KEY = "word_map";
+    private static final String LOCK_PRIVATE_DNS_KEY = "lock_private_dns";
 
     private SharedPreferences remotePrefs;
-
     private final HashMap<String, String> wordMap = new HashMap<>();
 
     private WordAdapter adapter;
+    private Button lockPrivateDnsButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,6 +42,7 @@ public class MainActivity extends AppCompatActivity {
 
         RecyclerView recyclerView = findViewById(R.id.recyclerView);
         Button addButton = findViewById(R.id.addButton);
+        lockPrivateDnsButton = findViewById(R.id.lockPrivateDnsButton);
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
@@ -63,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setAdapter(adapter);
 
         addButton.setOnClickListener(v -> showWordDialog(null, null));
+        lockPrivateDnsButton.setOnClickListener(v -> togglePrivateDnsLock());
 
         /*
          * Connect to LSPosed/libxposed service.
@@ -80,6 +83,7 @@ public class MainActivity extends AppCompatActivity {
                                         service.getRemotePreferences(PREFS_NAME);
 
                                 loadWords();
+                                updatePrivateDnsLockButton();
 
                             } catch (Exception e) {
 
@@ -112,9 +116,68 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
-    /**
-     * Load the dictionary from RemotePreferences.
-     */
+    private void updatePrivateDnsLockButton() {
+        if (lockPrivateDnsButton == null) {
+            return;
+        }
+        boolean isLocked = remotePrefs != null
+                && remotePrefs.getBoolean(LOCK_PRIVATE_DNS_KEY, false);
+        lockPrivateDnsButton.setText(
+                isLocked ? "Private DNS: Locked (Tap to Unlock)" : "Lock Private DNS"
+        );
+    }
+
+    private void togglePrivateDnsLock() {
+        if (remotePrefs == null) {
+            Toast.makeText(
+                    this,
+                    "Waiting for LSPosed service...",
+                    Toast.LENGTH_SHORT
+            ).show();
+            return;
+        }
+
+        boolean currentlyLocked = remotePrefs.getBoolean(LOCK_PRIVATE_DNS_KEY, false);
+
+        if (!currentlyLocked) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Lock Private DNS?")
+                    .setMessage(
+                            "This will block changing Private DNS mode and Private DNS toggles in Android Settings.\n\nMake sure Settings (com.android.settings) is enabled in LSPosed scope for Text Replacer."
+                    )
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Activate Lock", (dialog, which) -> {
+                        remotePrefs.edit()
+                                .putBoolean(LOCK_PRIVATE_DNS_KEY, true)
+                                .apply();
+                        updatePrivateDnsLockButton();
+                        Toast.makeText(
+                                this,
+                                "Private DNS locked in Settings",
+                                Toast.LENGTH_SHORT
+                        ).show();
+                    })
+                    .show();
+        } else {
+            new AlertDialog.Builder(this)
+                    .setTitle("Unlock Private DNS?")
+                    .setMessage("Allow changing Private DNS settings again from Android Settings?")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Unlock", (dialog, which) -> {
+                        remotePrefs.edit()
+                                .putBoolean(LOCK_PRIVATE_DNS_KEY, false)
+                                .apply();
+                        updatePrivateDnsLockButton();
+                        Toast.makeText(
+                                this,
+                                "Private DNS unlocked",
+                                Toast.LENGTH_SHORT
+                        ).show();
+                    })
+                    .show();
+        }
+    }
+
     private void loadWords() {
 
         if (remotePrefs == null) {
@@ -158,12 +221,6 @@ public class MainActivity extends AppCompatActivity {
         refreshList();
     }
 
-    /**
-     * Add or edit a word.
-     *
-     * If badWord is null -> new word.
-     * Otherwise -> editing existing word.
-     */
     private void showWordDialog(
             String badWord,
             String existingReplacement
@@ -192,9 +249,6 @@ public class MainActivity extends AppCompatActivity {
         EditText replacementInput =
                 view.findViewById(R.id.replacementInput);
 
-        /*
-         * Editing existing word.
-         */
         if (badWord != null) {
 
             wordInput.setText(badWord);
@@ -242,9 +296,6 @@ public class MainActivity extends AppCompatActivity {
                                         .getText()
                                         .toString();
 
-                        /*
-                         * Validation.
-                         */
                         if (newBadWord.isEmpty()) {
 
                             wordInput.setError(
@@ -263,11 +314,6 @@ public class MainActivity extends AppCompatActivity {
                             return;
                         }
 
-                        /*
-                         * If editing and the user changed
-                         * the original bad word, remove
-                         * the old entry first.
-                         */
                         if (badWord != null
                                 && !badWord.equals(newBadWord)) {
 
@@ -289,9 +335,6 @@ public class MainActivity extends AppCompatActivity {
         dialog.show();
     }
 
-    /**
-     * Delete a word.
-     */
     private void deleteWord(String badWord) {
 
         if (remotePrefs == null) {
@@ -322,9 +365,6 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    /**
-     * Save the entire dictionary to RemotePreferences.
-     */
     private void saveWords() {
 
         if (remotePrefs == null) {
@@ -379,9 +419,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * Refresh RecyclerView.
-     */
     private void refreshList() {
 
         if (adapter == null) {
@@ -391,9 +428,6 @@ public class MainActivity extends AppCompatActivity {
         ArrayList<String> badWords =
                 new ArrayList<>(wordMap.keySet());
 
-        /*
-         * Sort alphabetically.
-         */
         badWords.sort(String.CASE_INSENSITIVE_ORDER);
 
         adapter.updateData(
