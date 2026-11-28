@@ -2,6 +2,9 @@ package com.example.module;
 
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -27,6 +30,8 @@ public class MainActivity extends AppCompatActivity {
     private static final String PREFS_NAME = "mod_prefs";
     private static final String WORD_MAP_KEY = "word_map";
     private static final String LOCK_PRIVATE_DNS_KEY = "lock_private_dns";
+    private static final String REQUIRED_LINE_1 = "Wallahi i am fully aware of what i am doing";
+    private static final String REQUIRED_LINE_2 = "And its not something that ruins my life";
 
     private SharedPreferences remotePrefs;
     private final HashMap<String, String> wordMap = new HashMap<>();
@@ -39,6 +44,36 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_main);
+
+        View lockContainer = findViewById(R.id.lockContainer);
+        View mainContentContainer = findViewById(R.id.mainContentContainer);
+        EditText lockInput = findViewById(R.id.lockInput);
+        Button unlockButton = findViewById(R.id.unlockButton);
+
+        lockInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                unlockButton.setEnabled(isUnlockPhraseValid(s != null ? s.toString() : ""));
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+            }
+        });
+
+        unlockButton.setOnClickListener(v -> {
+            String entered = lockInput.getText() != null ? lockInput.getText().toString() : "";
+            if (isUnlockPhraseValid(entered)) {
+                lockContainer.setVisibility(View.GONE);
+                mainContentContainer.setVisibility(View.VISIBLE);
+            } else {
+                lockInput.setError("Please type the exact required text");
+            }
+        });
 
         RecyclerView recyclerView = findViewById(R.id.recyclerView);
         Button addButton = findViewById(R.id.addButton);
@@ -114,6 +149,21 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
         );
+    }
+
+    private boolean isUnlockPhraseValid(String input) {
+        if (input == null) {
+            return false;
+        }
+        String normalized = input.replace("\r\n", "\n").replace("\r", "\n").trim();
+        String[] lines = normalized.split("\n");
+        if (lines.length != 2) {
+            return false;
+        }
+        String line1 = lines[0].trim().replaceAll("\\s+", " ");
+        String line2 = lines[1].trim().replaceAll("\\s+", " ");
+        return line1.equalsIgnoreCase(REQUIRED_LINE_1)
+                && line2.equalsIgnoreCase(REQUIRED_LINE_2);
     }
 
     private void updatePrivateDnsLockButton() {
