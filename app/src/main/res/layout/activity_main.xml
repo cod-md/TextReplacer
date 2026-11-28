@@ -1,53 +1,113 @@
 <?xml version="1.0" encoding="utf-8"?>
-
-<LinearLayout
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:layout_height="match_parent">
 
-    <TextView
+    <LinearLayout
+        android:id="@+id/lockContainer"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Text Replacer"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:paddingBottom="8dp" />
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center_vertical"
+        android:padding="24dp">
 
-    <TextView
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Before Opening Text Replacer"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:paddingBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Type the following text exactly to continue:"
+            android:textSize="14sp"
+            android:paddingBottom="8dp" />
+
+        <TextView
+            android:id="@+id/requiredPhraseText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Wallahi i am fully aware of what i am doing\nAnd its not something that ruins my life"
+            android:textSize="15sp"
+            android:textStyle="italic"
+            android:padding="12dp"
+            android:background="#1A888888"
+            android:layout_marginBottom="16dp" />
+
+        <EditText
+            android:id="@+id/lockInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minLines="3"
+            android:gravity="top|start"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:hint="Type the text above..."
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/unlockButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Open App"
+            android:enabled="false" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/mainContentContainer"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Words will be automatically replaced when typed."
-        android:textSize="14sp"
-        android:paddingBottom="16dp" />
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:visibility="gone">
 
-    <Button
-        android:id="@+id/addButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Add Replacement" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Text Replacer"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:paddingBottom="8dp" />
 
-    <Button
-        android:id="@+id/lockPrivateDnsButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Lock Private DNS" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Words will be automatically replaced when typed."
+            android:textSize="14sp"
+            android:paddingBottom="16dp" />
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="12dp"
-        android:layout_marginBottom="8dp"
-        android:background="#CCCCCC" />
+        <Button
+            android:id="@+id/addButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Add Replacement" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerView"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingBottom="8dp" />
+        <Button
+            android:id="@+id/lockPrivateDnsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Lock Private DNS" />
 
-</LinearLayout>
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="8dp"
+            android:background="#CCCCCC" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingBottom="8dp" />
+
+    </LinearLayout>
+
+</FrameLayout>
